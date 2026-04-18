@@ -4,8 +4,18 @@ from urllib.parse import urljoin, urlparse
 import requests
 import time
 import os
+import logging
+import sys
 
 from playwright.sync_api import sync_playwright
+
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -89,21 +99,28 @@ def crawl():
         "https://sktechhh.blogspot.com"
     ]
 
+    logger.info("Starting crawl across %d blogs", len(blogs))
+
     for blog in blogs:
+        logger.info("Crawling blog: %s", blog)
         posts = get_posts(blog)
+        logger.debug("Found %d posts in %s", len(posts), blog)
 
         for post in posts:
             if post in visited_posts:
                 continue
 
             visited_posts.add(post)
+            logger.info("Processing post: %s", post)
 
             try:
                 res = requests.get(post, timeout=10)
                 soup = BeautifulSoup(res.text, "html.parser")
             except:
+                logger.debug("Failed to fetch post, skipping: %s", post)
                 continue
 
+            links_in_post = 0
             for a in soup.find_all("a", href=True):
                 link = urljoin(post, a["href"])
 
@@ -113,11 +130,16 @@ def crawl():
                 if "blogspot.com" in link:
                     continue
 
+                logger.debug("Resolving link with browser: %s", link)
                 # 🔥 use browser resolver
                 final_url = resolve_with_browser(link)
                 final_links.add(final_url)
+                links_in_post += 1
 
+            logger.info("Extracted %d link(s) from post: %s", links_in_post, post)
             time.sleep(0.8)
+
+    logger.info("Crawl complete — %d unique link(s) found", len(final_links))
 
     output_path = "links.txt"
 
